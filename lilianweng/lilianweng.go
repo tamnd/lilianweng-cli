@@ -228,6 +228,101 @@ func cleanText(s string) string {
 	return strings.TrimSpace(html.UnescapeString(s))
 }
 
+// PostDetail augments Post with sections extracted from the post page.
+type PostDetail struct {
+	Title     string `json:"title"`
+	Published string `json:"published"`
+	Slug      string `json:"slug"`
+	Summary   string `json:"summary"`
+	Tags      string `json:"tags"`
+	Sections  string `json:"sections"`
+	URL       string `json:"url"`
+}
+
+// Info holds aggregate blog statistics.
+type Info struct {
+	TotalPosts int    `json:"total_posts"`
+	FirstPost  string `json:"first_post"`
+	LatestPost string `json:"latest_post"`
+	FeedURL    string `json:"feed_url"`
+	SiteURL    string `json:"site_url"`
+}
+
+var reH2 = regexp.MustCompile(`(?i)<h2[^>]*>(.*?)</h2>`)
+
+// extractSections extracts h2 headings from HTML.
+func extractSections(s string) string {
+	var secs []string
+	for _, m := range reH2.FindAllStringSubmatch(s, -1) {
+		t := strings.TrimSpace(cleanText(m[1]))
+		if t != "" {
+			secs = append(secs, t)
+		}
+	}
+	return strings.Join(secs, ";")
+}
+
+// slugFromURL extracts the last path segment from a URL.
+func slugFromURL(rawURL string) string {
+	parts := strings.Split(strings.TrimRight(rawURL, "/"), "/")
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[len(parts)-1]
+}
+
+// PostBySlug fetches a single post by slug or URL.
+func (c *Client) PostBySlug(ctx context.Context, slug string) (*PostDetail, error) {
+	posts, err := c.Latest(ctx, 0)
+	if err != nil {
+		return nil, err
+	}
+	// If it's a full URL, match directly
+	var matched *Post
+	for i := range posts {
+		if posts[i].URL == slug ||
+			strings.HasSuffix(strings.TrimSuffix(posts[i].URL, "/"), "/"+slug) ||
+			slugFromURL(posts[i].URL) == slug {
+			matched = &posts[i]
+			break
+		}
+	}
+	if matched == nil {
+		return nil, fmt.Errorf("post not found: %s", slug)
+	}
+	body, err := c.get(ctx, matched.URL)
+	if err != nil {
+		return nil, err
+	}
+	return &PostDetail{
+		Title:     matched.Title,
+		Published: matched.Published,
+		Slug:      slugFromURL(matched.URL),
+		Summary:   matched.Summary,
+		Tags:      matched.Tags,
+		Sections:  extractSections(string(body)),
+		URL:       matched.URL,
+	}, nil
+}
+
+// Stats returns aggregate statistics from the RSS feed.
+func (c *Client) Stats(ctx context.Context) (*Info, error) {
+	posts, err := c.Latest(ctx, 0)
+	if err != nil {
+		return nil, err
+	}
+	info := &Info{
+		TotalPosts: len(posts),
+		FeedURL:    c.cfg.BaseURL + "/index.xml",
+		SiteURL:    c.cfg.BaseURL,
+	}
+	if len(posts) > 0 {
+		info.LatestPost = posts[0].Published
+		info.FirstPost = posts[len(posts)-1].Published
+	}
+	return info, nil
+}
+
 // formatDate parses the RFC1123Z date Hugo emits in RSS and reformats as YYYY-MM-DD.
 func formatDate(s string) string {
 	s = strings.TrimSpace(s)
