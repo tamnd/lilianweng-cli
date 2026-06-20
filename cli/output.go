@@ -295,3 +295,12 @@ func truncate(s string, n int) string {
 	}
 	return s[:n-1] + "…"
 }
+
+// NewRendererTo builds a Renderer writing to w using the App's settings.
+func NewRendererTo(w io.Writer, app *App) *Renderer {
+	format := Format(app.format)
+	if format == "" {
+		format = FormatJSONL
+	}
+	return NewRenderer(w, format, app.fields, app.noHeader, app.template)
+}

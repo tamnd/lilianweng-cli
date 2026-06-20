@@ -61,6 +61,9 @@ Quick start:
 	root.AddCommand(
 		newLatestCmd(app),
 		newSearchCmd(app),
+		newPostCmd(app),
+		newExportCmd(app),
+		newInfoCmd(app),
 		newVersionCmd(),
 	)
 	return root
